@@ -2,11 +2,17 @@ from pyspark.sql.functions import col
 from datetime import datetime
 
 
+class DataQualityException(Exception):
+    """Exceção lançada quando regras de qualidade falham"""
+    pass
+
+
 class DataQualityEngine:
 
-    def __init__(self, adapter):
+    def __init__(self, adapter, fail_fast=True):
         self.adapter = adapter
         self.spark = adapter.spark
+        self.fail_fast = fail_fast
 
     def run(self, df, dataset_name):
         # 1. Registra dataset se não existir
@@ -42,6 +48,12 @@ class DataQualityEngine:
                     })
 
             # extensível: range, regex, allowed_values etc
+
+        # 5. Fail-fast: quebra notebook/pipeline se houver violação
+        if violations and self.fail_fast:
+            raise DataQualityException(
+                f"Data Quality FAILED for dataset '{dataset_name}': {violations}"
+            )
 
         status = "FAILED" if violations else "OK"
 
