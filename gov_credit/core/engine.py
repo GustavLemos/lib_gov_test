@@ -1,4 +1,6 @@
+from pyspark.sql.functions import col
 from datetime import datetime
+
 
 class DataQualityEngine:
 
@@ -7,26 +9,45 @@ class DataQualityEngine:
         self.spark = adapter.spark
 
     def run(self, df, dataset_name):
-        # 1. registra dataset se não existir
+        # 1. Registra dataset se não existir
         self.adapter.ensure_dataset(dataset_name)
 
-        # 2. registra colunas novas
+        # 2. Registra colunas novas
         self.adapter.ensure_columns(dataset_name, df)
 
-        # 3. carrega regras ativas
+        # 3. Carrega regras ativas
         rules_df = self.adapter.load_rules(dataset_name)
 
         if rules_df is None or rules_df.count() == 0:
             return {
                 "dataset": dataset_name,
-                "status": "NO_RULES"
+                "rules_applied": 0,
+                "status": "NO_RULES",
+                "violations": []
             }
 
-        # 4. aplica regras (placeholder simples)
-        failed = rules_df.filter("is_active = true").count() == 0
+        rules = rules_df.collect()
+        violations = []
+
+        # 4. Aplica regras
+        for rule in rules:
+            if rule.rule_type == "not_null":
+                invalid_count = df.filter(col(rule.column_name).isNull()).count()
+
+                if invalid_count > 0:
+                    violations.append({
+                        "column": rule.column_name,
+                        "rule": "not_null",
+                        "invalid_rows": invalid_count
+                    })
+
+            # extensível: range, regex, allowed_values etc
+
+        status = "FAILED" if violations else "OK"
 
         return {
             "dataset": dataset_name,
-            "rules_applied": rules_df.count(),
-            "status": "OK" if not failed else "FAILED"
+            "rules_applied": len(rules),
+            "status": status,
+            "violations": violations
         }
